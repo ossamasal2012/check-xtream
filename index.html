@@ -1,0 +1,233 @@
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xtream Checker</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:#090d14;color:#edf2f7}
+header{padding:28px 20px;border-bottom:1px solid #1c2633;background:linear-gradient(135deg,#0d1624,#101927)}
+.container{max-width:1250px;margin:auto;padding:20px}
+h1{margin:0 0 7px;font-size:30px}.muted{color:#91a0b2}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0}
+.card{background:#0f1722;border:1px solid #202c3b;border-radius:18px;padding:18px;box-shadow:0 12px 35px #0003}
+textarea,input,select{width:100%;background:#0a111b;color:#fff;border:1px solid #2a394b;border-radius:11px;padding:11px;font:inherit}
+textarea{min-height:220px;direction:ltr;text-align:left}
+button{border:0;border-radius:11px;padding:11px 15px;font:inherit;font-weight:700;cursor:pointer;background:#263548;color:#fff}
+button.primary{background:#2563eb}button.danger{background:#7f1d1d}button:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.stat{padding:15px;border-radius:14px;background:#111d2a;border:1px solid #223043}.stat b{display:block;font-size:25px;margin-top:5px}
+.tablewrap{overflow:auto;margin-top:15px}table{width:100%;border-collapse:collapse;min-width:850px}
+th,td{padding:13px 10px;border-bottom:1px solid #202c3b;text-align:right}th{color:#91a0b2;font-size:13px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:13px;font-weight:700}
+.ok{background:#06351f;color:#5ee6a5}.bad{background:#3b1015;color:#ff8792}.warn{background:#3b2b05;color:#ffd66b}.neutral{background:#202b38;color:#b8c4d1}
+.small{font-size:12px;color:#91a0b2}.nowrap{white-space:nowrap}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;padding:20px}.modal.open{display:flex}
+.modalbox{width:min(700px,100%);background:#0f1722;border:1px solid #2a394b;border-radius:18px;padding:18px}
+video{width:100%;max-height:55vh;background:#000;border-radius:12px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<header><div class="container">
+<h1>🔎 Xtream Checker</h1>
+<div class="muted">فحص حسابات Xtream عبر واجهة Xtream API — مع حالة الحساب وتاريخ الانتهاء وزمن الاستجابة.</div>
+</div></header>
+
+<main class="container">
+<section class="grid">
+<div class="card">
+<h2>استيراد JSON</h2>
+<p class="muted">الصق مصفوفة السيرفرات بنفس الصيغة التي عندك. البيانات تبقى في هذا المتصفح.</p>
+<textarea id="jsonInput" spellcheck="false" placeholder='[
+  {
+    "name": "السيرفر الاول",
+    "host": "https://example.com:8080",
+    "username": "USERNAME",
+    "password": "PASSWORD"
+  }
+]'></textarea>
+<div class="actions">
+<button class="primary" id="importBtn">استيراد</button>
+<button id="exportBtn">تصدير JSON</button>
+<button class="danger" id="clearBtn">مسح الكل</button>
+</div>
+</div>
+
+<div class="card">
+<h2>إعدادات الفحص</h2>
+<label>المهلة لكل طلب (ثانية)</label>
+<input id="timeout" type="number" min="2" max="60" value="12">
+<br><br>
+<label>عدد الفحوصات المتزامنة</label>
+<input id="concurrency" type="number" min="1" max="20" value="6">
+<br><br>
+<label>الفحص التلقائي</label>
+<select id="auto"><option value="0">متوقف</option><option value="60">كل دقيقة</option><option value="300">كل 5 دقائق</option><option value="900">كل 15 دقيقة</option></select>
+<div class="actions">
+<button class="primary" id="checkBtn">فحص الكل الآن</button>
+<button id="addBtn">إضافة سيرفر</button>
+</div>
+</div>
+</section>
+
+<section class="card">
+<div class="stats">
+<div class="stat">الكل<b id="sAll">0</b></div>
+<div class="stat">فعال<b id="sOk">0</b></div>
+<div class="stat">منتهي<b id="sExpired">0</b></div>
+<div class="stat">أخطاء<b id="sError">0</b></div>
+<div class="stat">آخر فحص<b id="sTime">—</b></div>
+</div>
+</section>
+
+<section class="card">
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<h2 style="margin:0">النتائج</h2>
+<input id="search" placeholder="بحث بالاسم أو الخادم..." style="max-width:350px">
+<select id="filter" style="max-width:190px"><option value="all">الكل</option><option value="active">فعال</option><option value="expired">منتهي</option><option value="error">خطأ</option><option value="unchecked">غير مفحوص</option></select>
+</div>
+<div class="tablewrap">
+<table><thead><tr><th>السيرفر</th><th>الحالة</th><th>تاريخ الانتهاء</th><th>المتبقي</th><th>الاستجابة</th><th>إجراء</th></tr></thead>
+<tbody id="rows"></tbody></table>
+</div>
+</section>
+</main>
+
+<div class="modal" id="modal"><div class="modalbox">
+<div style="display:flex;justify-content:space-between;align-items:center"><h2>إضافة سيرفر</h2><button id="closeModal">×</button></div>
+<input id="mName" placeholder="اسم السيرفر"><br><br>
+<input id="mHost" placeholder="https://example.com:8080" dir="ltr"><br><br>
+<input id="mUser" placeholder="Username" dir="ltr"><br><br>
+<input id="mPass" placeholder="Password" dir="ltr"><br>
+<div class="actions"><button class="primary" id="saveModal">إضافة</button></div>
+</div></div>
+
+<script>
+const KEY="xtream-checker-v1";
+let servers=JSON.parse(localStorage.getItem(KEY)||"[]");
+let running=false, timer=null;
+
+const $=id=>document.getElementById(id);
+const save=()=>localStorage.setItem(KEY,JSON.stringify(servers));
+
+function normalizeHost(h){
+  h=(h||"").trim().replace(/\/+$/,"");
+  if(!h)return "";
+  if(!/^https?:\/\//i.test(h)) h="http://"+h;
+  return h;
+}
+function statusBadge(s){
+  const map={
+    active:["🟢","فعال","ok"], expired:["🔴","منتهي","bad"],
+    blocked:["⛔","محظور","bad"], auth_error:["🔐","بيانات غير صحيحة","bad"],
+    timeout:["⏱️","انتهت المهلة","warn"], unreachable:["🔌","تعذر الاتصال","bad"],
+    invalid:["⚠️","بيانات غير صالحة","warn"], unchecked:["⚪","غير مفحوص","neutral"]
+  };
+  const x=map[s]||map.unchecked;
+  return `<span class="badge ${x[2]}">${x[0]} ${x[1]}</span>`;
+}
+function daysLeft(exp){
+  if(!exp)return "—";
+  const n=Math.ceil((exp*1000-Date.now())/86400000);
+  if(n<0)return "منتهي";
+  if(n===0)return "ينتهي اليوم";
+  return `${n} يوم`;
+}
+function dateText(exp){
+  if(!exp)return "—";
+  return new Date(exp*1000).toLocaleString("ar-IQ",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+}
+function render(){
+  const q=$("search").value.toLowerCase(), f=$("filter").value;
+  const list=servers.filter(x=>{
+    const hay=(x.name+" "+x.host).toLowerCase();
+    if(q&&!hay.includes(q))return false;
+    if(f==="active"&&x.status!=="active")return false;
+    if(f==="expired"&&x.status!=="expired")return false;
+    if(f==="error"&&!["timeout","unreachable","invalid","auth_error","blocked"].includes(x.status))return false;
+    if(f==="unchecked"&&x.status!=="unchecked")return false;
+    return true;
+  });
+  $("rows").innerHTML=list.map(x=>`<tr>
+<td><b>${esc(x.name||"بدون اسم")}</b><div class="small" dir="ltr">${esc(x.host)}</div></td>
+<td>${statusBadge(x.status)}</td>
+<td class="nowrap">${dateText(x.exp_date)}</td>
+<td>${daysLeft(x.exp_date)}</td>
+<td>${x.ms?x.ms+" ms":"—"}</td>
+<td><button onclick="checkOne('${x.id}')">فحص</button> <button class="danger" onclick="removeOne('${x.id}')">حذف</button></td>
+</tr>`).join("") || `<tr><td colspan="6" class="muted">لا توجد نتائج</td></tr>`;
+  $("sAll").textContent=servers.length;
+  $("sOk").textContent=servers.filter(x=>x.status==="active").length;
+  $("sExpired").textContent=servers.filter(x=>x.status==="expired").length;
+  $("sError").textContent=servers.filter(x=>["timeout","unreachable","invalid","auth_error","blocked"].includes(x.status)).length;
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+async function apiCheck(x){
+  const timeout=Math.max(2,Number($("timeout").value)||12)*1000;
+  const start=performance.now();
+  const controller=new AbortController(), t=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const r=await fetch("/api/check",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({host:normalizeHost(x.host),username:x.username,password:x.password,timeout}),
+      signal:controller.signal
+    });
+    const data=await r.json();
+    x.ms=Math.round(performance.now()-start);
+    x.checkedAt=Date.now();
+    x.status=data.status||"unreachable";
+    x.exp_date=data.exp_date||null;
+    x.account=data.account||null;
+    x.server=data.server||null;
+    x.error=data.error||null;
+  }catch(e){
+    x.ms=Math.round(performance.now()-start); x.checkedAt=Date.now();
+    x.status=e.name==="AbortError"?"timeout":"unreachable"; x.error=e.message;
+  }finally{clearTimeout(t)}
+}
+async function checkAll(){
+  if(running||!servers.length)return;
+  running=true;$("checkBtn").disabled=true;
+  let i=0; const c=Math.max(1,Math.min(20,Number($("concurrency").value)||6));
+  async function worker(){while(i<servers.length){const x=servers[i++]; await apiCheck(x); render()}}
+  await Promise.all(Array.from({length:Math.min(c,servers.length)},worker));
+  save(); $("sTime").textContent=new Date().toLocaleTimeString("ar-IQ"); 
+  running=false;$("checkBtn").disabled=false;render();
+}
+async function checkOne(id){const x=servers.find(s=>s.id===id);if(!x)return;await apiCheck(x);save();render()}
+function importJSON(){
+  try{
+    const arr=JSON.parse($("jsonInput").value);
+    if(!Array.isArray(arr))throw Error("يجب أن يكون JSON مصفوفة");
+    servers=arr.filter(x=>x&&x.host&&x.username&&x.password).map(x=>({...x,id:crypto.randomUUID(),host:normalizeHost(x.host),status:"unchecked",exp_date:null}));
+    save();render();$("jsonInput").value="";
+  }catch(e){alert("JSON غير صالح: "+e.message)}
+}
+$("importBtn").onclick=importJSON;
+$("checkBtn").onclick=checkAll;
+$("search").oninput=render;$("filter").onchange=render;
+$("clearBtn").onclick=()=>{if(confirm("مسح جميع السيرفرات؟")){servers=[];save();render()}};
+$("exportBtn").onclick=()=>{const clean=servers.map(({id,status,exp_date,ms,checkedAt,account,server,error,...x})=>x);$("jsonInput").value=JSON.stringify(clean,null,2)};
+$("addBtn").onclick=()=>{$("modal").classList.add("open")};
+$("closeModal").onclick=()=>{$("modal").classList.remove("open")};
+$("saveModal").onclick=()=>{
+ const x={id:crypto.randomUUID(),name:$("mName").value.trim(),host:normalizeHost($("mHost").value),username:$("mUser").value.trim(),password:$("mPass").value,status:"unchecked",exp_date:null};
+ if(!x.host||!x.username||!x.password){alert("املأ الحقول المطلوبة");return}
+ servers.push(x);save();render();$("modal").classList.remove("open");
+ ["mName","mHost","mUser","mPass"].forEach(id=>$(id).value="");
+};
+$("auto").onchange=()=>{
+ if(timer)clearInterval(timer); const sec=Number($("auto").value);
+ if(sec)timer=setInterval(checkAll,sec*1000);
+};
+window.checkOne=checkOne;
+window.removeOne=id=>{servers=servers.filter(x=>x.id!==id);save();render()};
+render();
+</script>
+</body>
+</html>
