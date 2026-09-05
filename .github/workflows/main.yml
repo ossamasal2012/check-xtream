@@ -39,44 +39,56 @@ jobs:
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
 
-      - name: Check project
+      - name: Check index.html
         run: |
           test -f index.html
           echo "index.html found"
 
       - name: Create package.json
         run: |
-          printf '%s\n' \
-            '{' \
-            '  "name": "xtream-checker",' \
-            '  "version": "1.0.0",' \
-            '  "private": true,' \
-            '  "dependencies": {' \
-            '    "@capacitor/core": "^7.4.3",' \
-            '    "@capacitor/android": "^7.4.3",' \
-            '    "@capacitor/cli": "^7.4.3"' \
-            '  }' \
-            '}' > package.json
+          cat > package.json <<'EOF'
+          {
+            "name": "xtream-checker",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/core": "^7.4.3",
+              "@capacitor/android": "^7.4.3",
+              "@capacitor/cli": "^7.4.3"
+            }
+          }
+          EOF
 
       - name: Install dependencies
         run: npm install
 
+      - name: Prepare web directory
+        run: |
+          rm -rf www
+          mkdir -p www
+          cp index.html www/index.html
+
       - name: Create Capacitor config
         run: |
-          printf '%s\n' \
-            '{' \
-            '  "appId": "com.ossama.xtreamchecker",' \
-            '  "appName": "Xtream Checker",' \
-            '  "webDir": "."' \
-            '}' > capacitor.config.json
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.ossama.xtreamchecker",
+            "appName": "Xtream Checker",
+            "webDir": "www",
+            "bundledWebRuntime": false
+          }
+          EOF
 
       - name: Create Android project
         run: npx cap add android
 
-      - name: Copy web application
+      - name: Copy web files
         run: npx cap copy android
 
-      - name: Enable network access
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Configure Android network
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -86,15 +98,8 @@ jobs:
 
           if "android.permission.INTERNET" not in text:
               text = text.replace(
-                  "<manifest ",
-                  '<manifest '
-                  'xmlns:android="http://schemas.android.com/apk/res/android" '
-              )
-
-              text = text.replace(
-                  ">",
-                  '>\n    <uses-permission android:name="android.permission.INTERNET" />',
-                  1
+                  "</manifest>",
+                  '    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>'
               )
 
           text = text.replace(
@@ -105,7 +110,7 @@ jobs:
           path.write_text(text)
           PY
 
-      - name: Sync Capacitor
+      - name: Sync Android
         run: npx cap sync android
 
       - name: Make Gradle executable
@@ -115,14 +120,15 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Find APK
+      - name: Verify APK
         run: |
-          find android/app/build/outputs/apk/debug -type f -name "*.apk" -print
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Xtream-Checker-APK
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
