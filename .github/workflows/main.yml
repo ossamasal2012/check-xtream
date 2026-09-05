@@ -1,4 +1,4 @@
-
+```yaml
 name: Build Xtream Checker APK
 
 on:
@@ -17,70 +17,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ============================================================
-      # 1. تحميل المشروع
-      # ============================================================
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. Node.js 22
-      #    لا تحتاج تثبته على جهازك
-      # ============================================================
-      - name: Setup Node.js 22
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      # ============================================================
-      # 3. Java 17
-      # ============================================================
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
 
-      # ============================================================
-      # 4. Android SDK
-      # ============================================================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
           sdkmanager "platform-tools"
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
 
-      # ============================================================
-      # 5. التأكد من وجود index.html
-      # ============================================================
-      - name: Verify web application
+      - name: Check index.html
         run: |
-          if [ ! -f "index.html" ]; then
-            echo "ERROR: index.html not found"
-            exit 1
-          fi
+          test -f index.html
+          echo "index.html found"
 
-          echo "Web application found:"
-          ls -lh index.html
-
-      # ============================================================
-      # 6. إنشاء package.json
-      #    حتى ما تحتاج Node.js محلياً
-      # ============================================================
-      - name: Create package configuration
+      - name: Create package.json
         run: |
           cat > package.json <<'EOF'
           {
             "name": "xtream-checker",
             "version": "1.0.0",
             "private": true,
-            "scripts": {
-              "build": "echo Web application ready"
-            },
             "dependencies": {
               "@capacitor/core": "^7.4.3",
               "@capacitor/android": "^7.4.3",
@@ -89,105 +61,42 @@ jobs:
           }
           EOF
 
-      # ============================================================
-      # 7. تثبيت Capacitor
-      # ============================================================
-      - name: Install Capacitor
+      - name: Install dependencies
         run: npm install
 
-      # ============================================================
-      # 8. إنشاء capacitor.config
-      # ============================================================
-      - name: Create Capacitor configuration
+      - name: Create Capacitor config
         run: |
-          cat > capacitor.config.json <<'EOF'
-          {
-            "appId": "com.ossama.xtreamchecker",
-            "appName": "Xtream Checker",
-            "webDir": ".",
-            "bundledWebRuntime": false,
-            "server": {
-              "androidScheme": "https"
-            },
-            "android": {
-              "allowMixedContent": true
-            }
-          }
-          EOF
+          printf '%s\n' \
+          '{' \
+          '  "appId": "com.ossama.xtreamchecker",' \
+          '  "appName": "Xtream Checker",' \
+          '  "webDir": "."' \
+          '}' > capacitor.config.json
 
-      # ============================================================
-      # 9. إضافة Android
-      # ============================================================
-      - name: Add Android platform
+      - name: Add Android
         run: npx cap add android
 
-      # ============================================================
-      # 10. إعداد Android Native
-      # ============================================================
-      - name: Configure Android project
+      - name: Copy web files
+        run: npx cap copy android
+
+      - name: Enable Android internet access
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          sed -i 's#<manifest #<manifest android:usesCleartextTraffic="true" #' android/app/src/main/AndroidManifest.xml
 
-          manifest = Path(
-              "android/app/src/main/AndroidManifest.xml"
-          )
-
-          text = manifest.read_text()
-
-          # Internet permission
-          if "android.permission.INTERNET" not in text:
-              text = text.replace(
-                  "<manifest ",
-                  '<manifest '
-                  'xmlns:android="http://schemas.android.com/apk/res/android" '
-              )
-
-              text = text.replace(
-                  ">",
-                  '>\n'
-                  '    <uses-permission android:name="android.permission.INTERNET" />\n',
-                  1
-              )
-
-          # Cleartext traffic for HTTP Xtream hosts
-          text = text.replace(
-              '<application',
-              '<application android:usesCleartextTraffic="true"'
-          )
-
-          manifest.write_text(text)
-          PY
-
-      # ============================================================
-      # 11. مزامنة Capacitor
-      # ============================================================
-      - name: Capacitor sync
+      - name: Sync Capacitor
         run: npx cap sync android
 
-      # ============================================================
-      # 12. Gradle permissions
-      # ============================================================
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      # ============================================================
-      # 13. بناء Debug APK
-      # ============================================================
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # ============================================================
-      # 14. إظهار APK
-      # ============================================================
-      - name: Find APK
+      - name: List APK
         run: |
           find android/app/build/outputs/apk -type f -name "*.apk" -print
 
-      # ============================================================
-      # 15. رفع APK كـ Artifact
-      # ============================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
